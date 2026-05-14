@@ -1,0 +1,267 @@
+plt.close('all')
+
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+import matplotlib.patches as mpatches
+import pandas as pd
+
+# ── 1. 5개 막대용 집계 ────────────────────────────────────────
+bins_coarse = [0, 4.7, 5.7, 6.5, 8.0, float('inf')]
+labels      = ['3.1~4.6%', '4.7~5.6%', '5.7~6.4%', '6.5~8.0%', '8.0~17.6%']
+
+temp_group = pd.cut(new_df['HE_HbA1c'], bins=bins_coarse, labels=labels, right=False)
+dist_df = temp_group.value_counts().sort_index().reset_index()
+dist_df.columns = ['Glycosylated hemoglobin', 'Count']
+
+n_total = len(new_df)
+dist_df['Relative (%)']   = (dist_df['Count'] / n_total * 100).round(2)
+dist_df['Cumulative (%)'] = dist_df['Count'].cumsum() / n_total * 100
+dist_df.loc[dist_df.index[-1], 'Cumulative (%)'] = 100.0
+n_bins = len(dist_df)
+
+# ── 2. 누적빈도 곡선용 0.1 간격 집계 ─────────────────────────
+fine_edges = np.round(np.arange(4.7, 8.01, 0.1), 1)
+bins_fine  = np.concatenate([[0], fine_edges, [float('inf')]])
+
+fine_counts  = pd.cut(new_df['HE_HbA1c'], bins=bins_fine, right=False).value_counts().sort_index()
+fine_cum_n   = fine_counts.cumsum().values
+fine_cum_pct = fine_cum_n / n_total * 100
+
+n_fine_bins = len(bins_fine) - 1
+fine_right_edges = []
+for i in range(n_fine_bins):
+    r = bins_fine[i + 1]
+    fine_right_edges.append(17.6 if np.isinf(r) else r)
+fine_right_edges = np.array(fine_right_edges)
+
+# ── 3. x축 좌표 매핑 ─────────────────────────────────────────
+seg_hba1c = [3.1, 4.7, 8.0, 17.6]
+seg_ratio  = [0.175, 0.615, 0.21]
+seg_x      = np.cumsum([0] + seg_ratio)
+
+def hba1c_to_x(val):
+    val = np.atleast_1d(np.asarray(val, dtype=float))
+    out = np.empty_like(val)
+    for k in range(len(seg_hba1c) - 1):
+        lo, hi   = seg_hba1c[k], seg_hba1c[k + 1]
+        xlo, xhi = seg_x[k],    seg_x[k + 1]
+        mask = (val >= lo) & (val <= hi)
+        out[mask] = xlo + (val[mask] - lo) / (hi - lo) * (xhi - xlo)
+    return out * n_bins
+
+# ── 4. 막대 위치 & 너비 ───────────────────────────────────────
+bar_display_left  = [3.1, 4.7, 5.7, 6.5, 8.0]
+bar_display_right = [4.6, 5.6, 6.4, 7.9, 17.6]
+
+bar_left_x  = hba1c_to_x(bar_display_left).flatten()
+bar_right_x = hba1c_to_x(bar_display_right).flatten()
+bar_centers = (bar_left_x + bar_right_x) / 2
+bar_widths  = bar_right_x - bar_left_x
+
+# ── 5. 누적빈도 꺾은선 좌표 ──────────────────────────────────
+cdf_hba1c = np.concatenate([[3.1], fine_right_edges])
+cdf_x_pts = hba1c_to_x(cdf_hba1c).flatten()
+cdf_n_pts = np.concatenate([[0], fine_cum_n])
+
+# ── 6. x축 눈금 ──────────────────────────────────────────────
+vline_x = hba1c_to_x([4.7, 5.7, 6.5, 7.0, 7.5, 8.0]).flatten()
+
+tick_hba1c  = [3.1, 4.6, 4.7]
+tick_hba1c += list(np.round(np.arange(4.8, 8.01, 0.1), 1))
+tick_hba1c += [17.6]
+tick_x = hba1c_to_x(tick_hba1c).flatten()
+tick_labels = []
+for v in tick_hba1c:
+    if v in [3.1, 4.7, 17.6] or round(v * 10) % 5 == 0:
+        tick_labels.append(f'{v:.1f}')
+    else:
+        tick_labels.append('')
+
+# ── 7. annotation 헬퍼 ───────────────────────────────────────
+def draw_annotation(ax, xpt, ypt, xtxt, ytxt, label_str, dashed=False):
+    ls = (0, (4, 3)) if dashed else 'solid'
+    ax.plot([xpt, xtxt], [ypt, ytxt],
+            color='gray', linewidth=0.6, linestyle=ls, zorder=4)
+    ax.text(xtxt, ytxt, label_str,
+            fontsize=9.5,          # [폰트] annotation 텍스트: 7 → 8
+            ha='center', va='bottom', color='black',
+            bbox=dict(boxstyle='round,pad=0.30', fc='white',
+                      ec='gray', lw=0.6),
+            zorder=5)
+
+# ── 8. 플롯 ───────────────────────────────────────────────────
+y_left_lim  = 75000
+y_right_lim = 100.0 * (75000 / n_total)
+
+# ✅ fig, ax1 먼저 생성 후 ax1r 즉시 생성
+fig, ax1 = plt.subplots(1, 1, figsize=(9, 5.4))
+ax1r = ax1.twinx()
+
+# ✅ 그 다음 ylim 설정
+ax1.set_ylim(0, y_left_lim)
+ax1r.set_ylim(0, y_right_lim)
+ax1.set_yticks(np.arange(0, 75001, 10000))
+
+
+# 파란색 그라데이션: 4.7~5.7 구간, 오른쪽→왼쪽 (왼쪽이 진함)
+x_start_blue = hba1c_to_x(4.7)[0]
+x_end_blue   = hba1c_to_x(5.7)[0]
+
+grad_blue = np.linspace(1, 0, 256).reshape(1, -1)  # 왼쪽 진 → 오른쪽 연
+
+ax1.imshow(grad_blue, aspect='auto', cmap='Blues',
+           extent=[x_start_blue, x_end_blue, 0, y_left_lim],
+           alpha=0.18, zorder=0, vmin=-0, vmax=2)
+
+
+# 4.7~8.0 구간 그라데이션 배경
+x_start = hba1c_to_x(5.7)[0]
+x_end   = hba1c_to_x(8.0)[0]
+
+n = 256
+x = np.linspace(0, 1, n)
+peak = 0.2  # 왼쪽 5분의 1 지점
+grad = np.linspace(0, 1, 256).reshape(1, -1)  # 가로 방향: 왼쪽 연 → 오른쪽 진
+
+ax1.imshow(grad, aspect='auto', cmap='Reds',
+           extent=[x_start, x_end, 0, y_left_lim],
+           alpha=0.18, zorder=0, vmin=-0.18, vmax=2)
+
+
+# 막대
+for i in range(n_bins):
+    ax1.bar(bar_centers[i], dist_df['Count'].iloc[i],
+            width=bar_widths[i],
+            color='#AAAAAA', edgecolor='none', linewidth=0,
+            zorder=2)
+
+# 막대 외곽선
+for i in range(n_bins):
+    cnt = dist_df['Count'].iloc[i]
+    ax1.plot([bar_left_x[i],  bar_right_x[i]], [cnt, cnt],
+             color='black', linewidth=0.8, zorder=3)
+    ax1.plot([bar_left_x[i],  bar_left_x[i]],  [0, cnt],
+             color='black', linewidth=0.8, zorder=3)
+    ax1.plot([bar_right_x[i], bar_right_x[i]], [0, cnt],
+             color='black', linewidth=0.8, zorder=3)
+
+# 누적빈도 곡선
+ax1.plot(cdf_x_pts, cdf_n_pts, color='black', linewidth=1.8, zorder=4)
+
+# 막대 위 레이블
+bar_criteria = ['Normal or Hypo', 'Normal', 'Risk', 'Diabetes', 'Severe']
+for i in range(n_bins):
+    cnt = dist_df['Count'].iloc[i]
+    pct = dist_df['Relative (%)'].iloc[i]
+    is_first = (i == 0)
+
+    x_pos = bar_centers[i] - 0.043 if is_first else bar_centers[i]
+
+    ax1.text(x_pos, cnt + n_total * 0.005,  # ← bar_centers[i] → x_pos
+             '{}\n{:,}\n({:.2f}%)'.format(bar_criteria[i], cnt, pct),
+             ha='center', va='bottom',
+             fontsize=9.5 if is_first else 11,
+             fontweight='normal' if is_first else 'bold')
+
+# 누적빈도 annotation
+coarse_boundaries_hba1c = [4.7, 5.0, 5.7, 6.5, 7.0, 7.5, 8.0]
+coarse_idx = [np.argmin(np.abs(fine_right_edges - v)) for v in coarse_boundaries_hba1c]
+
+label_offsets = [
+    ( 0.00,  n_total * 0.05),
+    ( 0.00,  n_total * 0.05),
+    ( 0.00,  n_total * 0.05),
+    ( 0.00,  n_total * 0.05),
+    ( 0.00,  n_total * 0.05),
+    ( 0.00,  n_total * 0.05),
+    ( 0.00,  n_total * 0.05)
+]
+dashed_flags = [False, False, False, False, True, True, False]
+
+for k, (ci, (dx, dy), dashed) in enumerate(zip(coarse_idx, label_offsets, dashed_flags)):
+    xpt = cdf_x_pts[ci + 1]
+    ypt = cdf_n_pts[ci + 1]
+    label_str = 'n={:,}\n({:.1f}%)'.format(int(fine_cum_n[ci]), fine_cum_pct[ci])
+    draw_annotation(ax1, xpt, ypt, xpt + dx, ypt + dy, label_str, dashed=dashed)
+
+# annotation 포인트 빈 원
+for k, ci in enumerate(coarse_idx):
+    xpt = cdf_x_pts[ci + 1]
+    ypt = cdf_n_pts[ci + 1]
+    ax1.plot(xpt, ypt, 'o',
+             markersize=5, markerfacecolor='white',
+             markeredgecolor='black', markeredgewidth=0.8,
+             zorder=6)
+
+# 마지막 100% 포인트 채운 원
+ax1.plot(cdf_x_pts[-1], n_total, 'o',
+         markersize=5, markerfacecolor='black',
+         markeredgecolor='black', markeredgewidth=0.8,
+         zorder=6)
+
+# 마지막 100% annotation
+last_label = 'n={:,}\n(100.0%)'.format(n_total)
+draw_annotation(ax1,
+    cdf_x_pts[-1], n_total,
+    cdf_x_pts[-1] - 0.2, n_total - n_total * 0.13,
+    last_label, dashed=False)
+
+# 구간 경계 수직 점선
+for xv in vline_x:
+    ax1.axvline(x=xv, color='gray', linestyle='--',
+                linewidth=0.7, alpha=0.6, zorder=1)
+
+x_min = hba1c_to_x(3.1)[0]
+x_max = hba1c_to_x(17.6)[0]
+
+ax1.set_xlim(x_min, x_max)
+ax1.set_xticks(tick_x)
+ax1.set_xticklabels(tick_labels, fontsize=12.5)  # [폰트] x축 눈금 레이블: 7.5 → 8.5
+
+
+# 특정 값만 굵게 - tick label 객체에 직접 접근
+for tick, label in zip(ax1.get_xticklabels(), tick_labels):
+    if label in ['3.1', '17.6']:  # ← 굵게 할 값 지정
+        tick.set_fontweight('bold')
+        tick.set_fontsize(15)           # ← 크기도 따로 줄 수 있음
+
+ax1.spines[['top']].set_visible(False)
+ax1.grid(axis='y', linestyle=':', alpha=0.4, zorder=0)
+
+ax1.spines[['top']].set_visible(False)
+ax1.grid(axis='y', linestyle=':', alpha=0.4, zorder=0)
+ax1.tick_params(axis='both', labelsize=9)        # [폰트] x·y축 tick 레이블: 8 → 9
+ax1.set_xlabel('HbA1c (%)', fontsize=10,         # [폰트] x축 제목: 9 → 10
+               fontweight='bold')
+
+# 우측 y축 설정
+ax1r.set_yticks(np.arange(0, 101, 20))
+ax1r.yaxis.set_major_formatter(ticker.FormatStrFormatter('%g%%'))
+ax1r.set_ylabel('Cumulative Frequency (%)', fontsize=10,  # [폰트] 우측 y축 제목: 9 → 10
+                fontweight='bold')
+ax1r.spines[['top']].set_visible(False)
+ax1r.tick_params(axis='y', labelsize=9)                   # [폰트] 우측 y축 tick: 8 → 9
+
+# ── 9. 범례 ──────────────────────────────────────────────────
+legend_elements = [
+    mpatches.Patch(facecolor='white', edgecolor='gray', linewidth=0.6,
+                   label='Normal   : HbA1c ≤ 5.6%'),
+    mpatches.Patch(facecolor='white', edgecolor='gray', linewidth=0.6,
+                   label='Risk     : HbA1c 5.7-6.4%'),
+    mpatches.Patch(facecolor='white', edgecolor='gray', linewidth=0.6,
+                   label='Diabetes : HbA1c 6.5-7.9%'),
+    mpatches.Patch(facecolor='white', edgecolor='gray', linewidth=0.6,
+                   label='Severe   : HbA1c ≥ 8.0%'),
+]
+
+ax1.legend(handles=legend_elements,
+           loc='upper left',
+           framealpha=0.9, edgecolor='gray',
+           title='HbA1c Classification Criteria',
+           title_fontsize=9,          # [폰트] 범례 제목: 7 → 8
+           handlelength=0.8, handletextpad=0.5,
+           prop={'family': 'monospace', 'size': 9, 'weight': 'bold'}) # [폰트] 범례 항목: 6.5 → 7.5
+
+plt.tight_layout()
+plt.show()
