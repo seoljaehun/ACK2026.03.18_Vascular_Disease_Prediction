@@ -1,0 +1,112 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import shap
+
+# ============================================================
+# 1. 기본 정보 확인
+# ============================================================
+pos    = X_test.index.get_loc(4839)
+actual = y_test.loc[4839]
+pred   = y_test_pred[pos]
+
+print("="*55)
+print("index=4839 원본 정보")
+print("="*55)
+print(f"실제값         : {actual:.4f}")
+print(f"예측값         : {pred:.4f}")
+
+
+# ============================================================
+# 2. 반사실 샘플 생성
+# ============================================================
+X_counter            = X_test.loc[[4839]].copy()
+X_counter['BMI']  = 22.0
+X_counter['Vegetable Intake with Meals'] = '2'
+X_counter['Waist Circumference']   = 76.0
+X_counter['Drinking Frequency']  = '1'
+X_counter['Leisure Physical Activity'] = '1500'
+
+
+pred_counter = model.predict(X_counter)[0]
+
+print("\n" + "="*55)
+print("index=4839 반사실 정보")
+print("="*55)
+print(f"반사실 예측값      : {pred_counter:.4f}")
+print(f"원본 대비 변화     : {pred_counter - pred:+.4f}")
+
+# ============================================================
+# 3. SHAP 계산
+# ============================================================
+explainer           = shap.TreeExplainer(model, feature_perturbation="tree_path_dependent")
+shap_values         = explainer(X_test)
+shap_values_counter = explainer(X_counter)
+
+print("\n✅ SHAP 계산 완료")
+
+# ============================================================
+# 4. make_exp_with_other
+# ============================================================
+def make_exp_with_other(shap_exp, col_idx, top_names, other_sum, n_other):
+    top_vals  = shap_exp.values[col_idx]
+    top_data  = shap_exp.data[col_idx]
+
+    sort_order   = np.argsort(np.abs(top_vals))
+    sorted_vals  = top_vals[sort_order]
+    sorted_data  = top_data[sort_order]
+    sorted_names = [top_names[i] for i in sort_order]
+
+    epsilon     = 1e-10
+    final_vals  = np.concatenate([[epsilon], sorted_vals])
+    final_data  = np.concatenate([[0.0],     sorted_data])
+    final_names = [f"{n_other} other features"] + sorted_names
+
+    exp = shap.Explanation(
+        values        = final_vals,
+        base_values   = shap_exp.base_values,
+        data          = final_data,
+        feature_names = final_names
+    )
+    exp.values[0] = other_sum
+    return exp
+
+all_idx   = list(range(len(X_test.columns)))
+top_idx   = np.argsort(np.abs(shap_values[pos].values))[-11:]
+top_names = list(X_test.columns[top_idx])
+col_idx   = list(top_idx)
+other_idx = [i for i in all_idx if i not in top_idx]
+
+orig_sliced = make_exp_with_other(
+    shap_values[pos],
+    col_idx, top_names,
+    shap_values[pos].values[other_idx].sum(),
+    len(other_idx)
+)
+counter_sliced = make_exp_with_other(
+    shap_values_counter[0],
+    col_idx, top_names,
+    shap_values_counter[0].values[other_idx].sum(),
+    len(other_idx)
+)
+
+
+# ============================================================
+# 5. 원본 그래프 출력
+# ============================================================
+shap.plots.waterfall(orig_sliced, max_display=14, show=False)
+fig1 = plt.gcf()
+fig1.set_size_inches(9, 5.0)   # ← 여기서 크기 조정
+plt.tight_layout()
+plt.show()
+
+
+# ============================================================
+# 6. 반사실 그래프 출력
+# ============================================================
+shap.plots.waterfall(counter_sliced, max_display=14, show=False)  # ← orig_sliced → counter_sliced
+fig2 = plt.gcf()
+fig2.set_size_inches(9, 5.0)
+plt.tight_layout()
+plt.show()
+
