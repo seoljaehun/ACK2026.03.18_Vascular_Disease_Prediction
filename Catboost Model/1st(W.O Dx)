@@ -1,0 +1,118 @@
+# ============================================================
+# 1차 모델 - 타겟 및 제외 컬럼 정의
+# ============================================================
+target_col = 'HE_HbA1c'
+
+exclude_cols_1st = [
+    target_col,
+    'year', 'HE_chol', 'DE1_dg',
+    'wt_tot', 'HE_glu', 'D_2_1', 'DJ2_dg', 'DI3_dg', 'DI4_dg', ' DI5_dg', 'DI6_dg', 'carb_ratio', 'fat_ratio'
+]
+
+# ============================================================
+# 독립변수 정의
+# ============================================================
+feature_cols_1st = [col for col in new_df.columns if col not in exclude_cols_1st]
+
+# ============================================================
+# 데이터 준비
+# ============================================================
+df_clean_1st = new_df[feature_cols_1st + [target_col, 'HE_glu', 'year', 'wt_tot']].copy()
+
+train_val_data_1st = df_clean_1st[df_clean_1st['year'].between(2007, 2022)].copy()
+test_data_1st      = df_clean_1st[df_clean_1st['year'].isin([2023, 2024])].copy()
+
+# ============================================================
+# Train/Validation 분리 (80% / 20%)
+# ============================================================
+print("\n1차 모델 Train/Validation 데이터 분리 중...")
+
+train_data_1st, val_data_1st = train_test_split(
+    train_val_data_1st,
+    test_size=0.2,
+    random_state=42,
+    shuffle=True
+)
+
+# X, y, wt 분리
+X_train_1st  = train_data_1st[feature_cols_1st]
+y_train_1st  = train_data_1st[target_col]
+wt_train_1st = train_data_1st['wt_tot']
+
+X_val_1st  = val_data_1st[feature_cols_1st]
+y_val_1st  = val_data_1st[target_col]
+wt_val_1st = val_data_1st['wt_tot']
+
+X_test_1st = test_data_1st[feature_cols_1st]
+y_test     = test_data_1st[target_col]  # 정답값 공통
+
+# ============================================================
+# 샘플 가중치
+# ============================================================
+sample_weights_1st = wt_train_1st
+
+print(f"\n[가중치 통계]")
+print(f"  최소값: {sample_weights_1st.min():.4f}")
+print(f"  최대값: {sample_weights_1st.max():.4f}")
+print(f"  평균값: {sample_weights_1st.mean():.4f}")
+
+# ============================================================
+# 범주형 변수 처리
+# ============================================================
+numeric_etc_cols_1st = [
+    'age', "HE_wc", "N_WAT_C", "NF_WATER",
+    "N_FAT", "N_CHOL", "N_CHO", "N_TDF",
+    "N_SUGAR", "N_NA",
+    "HE_HbA1c", "HE_TG", "HE_HDL_st2",
+    "HE_glu", "HE_LDL_drct", "HE_chol", 'N_EN', "HE_BMI",
+    "BP16_1", "BP16_11", "BP16_12", "BP16_13", "BP16_14", "BP16_2", "BP16_21", "BP16_22", "BP16_23", "BP16_24", "BP8", "sleep_gap",
+    '고혈압가족력점수', '고지혈증가족력점수', '허혈성심장질환가족력점수',
+    '뇌졸중가족력점수', '당뇨병가족력점수', '암가족력점수',
+    'MET_work', 'MET_trans', 'MET_leisure', 'MET_total', 'sitting_time', 'BMR', 'TDEE', 'energy_balance_ratio',
+    'nutrient_imbalance',
+    'N_SFA', 'N_TDF', 'N_EN', 'fiber_adequacy_ratio', 'wt_tot', 'carb_fat_balance', 'sfa_adequacy_ratio', 'sfa_over_intake', 'N_UNFA'
+]
+
+numeric_etc_cols_1st = [col for col in numeric_etc_cols_1st if col in feature_cols_1st]
+cat_features_1st = [col for col in feature_cols_1st if col not in numeric_etc_cols_1st]
+
+for col in cat_features_1st:
+    if col in X_train_1st.columns:
+        X_train_1st[col] = X_train_1st[col].fillna('missing').astype(str)
+        X_val_1st[col]   = X_val_1st[col].fillna('missing').astype(str)
+        X_test_1st[col]  = X_test_1st[col].fillna('missing').astype(str)
+
+print("범주형 변수 변환 완료!")
+
+# ============================================================
+# 1차 모델 학습
+# ============================================================
+print("\n" + "="*60)
+print("1차 CatBoost 모델 학습 시작")
+print("="*60)
+
+model_1st = CatBoostRegressor(
+    iterations=2000,
+    learning_rate=0.1,
+    depth=4,
+    l2_leaf_reg=10,
+    loss_function='RMSE',
+    eval_metric='MAE',
+    cat_features=cat_features_1st,
+    random_seed=42,
+    early_stopping_rounds=50,
+    verbose=100,
+    task_type='CPU',
+    use_best_model=True,
+    bootstrap_type='Bernoulli',
+    subsample=0.8
+)
+
+model_1st.fit(
+    X_train_1st, y_train_1st,
+    sample_weight=sample_weights_1st.values,
+    eval_set=(X_val_1st, y_val_1st),
+    plot=False
+)
+
+print("\n학습 완료!")
