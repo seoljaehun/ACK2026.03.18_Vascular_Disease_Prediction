@@ -1,0 +1,210 @@
+import numpy as np
+import pandas as pd
+from catboost import CatBoostRegressor
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from sklearn.model_selection import train_test_split
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# 0. 타겟 및 제외 컬럼 정의
+# ============================================================
+target_col = 'HE_HbA1c'
+
+exclude_cols = [
+    target_col,
+    'year', 'HE_chol',
+    'wt_tot', 'HE_glu', 'D_2_1', 'DJ2_dg', 'DI3_dg', 'DI4_dg', ' DI5_dg', 'DI6_dg', 'carb_ratio', 'fat_ratio'
+]
+
+# ============================================================
+# 1. 독립변수 정의 (제외 리스트 기반 자동 생성)
+# ============================================================
+feature_cols = [col for col in new_df.columns if col not in exclude_cols]
+
+
+# ============================================================
+# 5. 데이터 준비
+# ============================================================
+df_clean = new_df[feature_cols + [target_col, 'HE_glu', 'year', 'wt_tot']].copy()
+
+# rename 적용
+rename_dict = {
+    'age': 'Age',
+    'DE1_dg': 'Diabetes Diagnosis',
+    'HE_wc': 'Waist Circumference',
+    'HE_BMI': 'BMI',
+    '당뇨병가족력점수': 'Diabetes F.History Sco',
+    '당뇨병가족력유무': 'Diabetes F.History (Y/N)',
+    'LS_VEG2': 'Vegetable Intake with Meals',
+    'MET_leisure': 'Leisure Physical Activity',
+    'edu': 'Education Level',
+    'BE3_92': 'Walking Days',
+    'BD1_11': 'Drinking Frequency'
+}
+
+df_clean = df_clean.rename(columns=rename_dict)
+
+# feature_cols도 rename 반영
+feature_cols = [rename_dict.get(col, col) for col in feature_cols]
+
+# Train/Val/Test 분리
+train_val_data = df_clean[df_clean['year'].between(2007, 2022)].copy()
+test_data = df_clean[df_clean['year'].isin([2023, 2024])].copy()
+
+# ============================================================
+# 6. Train/Validation 분리 (80% / 20%)
+# ============================================================
+print("\nTrain/Validation 데이터 분리 중...")
+
+train_data, val_data = train_test_split(
+    train_val_data,
+    test_size=0.2,
+    random_state=42,
+    shuffle=True
+)
+
+X_train = train_data[feature_cols]
+y_train = train_data[target_col]
+wt_train = train_data['wt_tot']
+
+X_val = val_data[feature_cols]
+y_val = val_data[target_col]
+wt_val = val_data['wt_tot']
+
+X_test = test_data[feature_cols]
+y_test = test_data[target_col]
+
+
+# ============================================================
+# 8. 샘플 가중치 계산
+# ============================================================
+print("\n샘플 가중치 계산 중...")
+sample_weights = wt_train
+
+print(f"\n[가중치 통계]")
+print(f"  최소값: {sample_weights.min():.4f}")
+print(f"  최대값: {sample_weights.max():.4f}")
+print(f"  평균값: {sample_weights.mean():.4f}")
+
+
+# ============================================================
+# 9. 범주형 변수 처리 및 자동 인식 (자동화 버전)
+# ============================================================
+
+numeric_etc_cols = [
+    # 수치형
+    'Age', 'Waist Circumference', "N_WAT_C", "NF_WATER",
+    "N_FAT", "N_CHOL", "N_CHO", "N_TDF",
+    "N_SUGAR", "N_NA",
+    "HE_HbA1c", "HE_TG", "HE_HDL_st2",
+    "HE_glu", "HE_LDL_drct", "HE_chol", 'N_EN', "BMI",
+
+    # 수면
+    "BP16_1", "BP16_11", "BP16_12", "BP16_13", "BP16_14", "BP16_2", "BP16_21", "BP16_22", "BP16_23", "BP16_24", "BP8", "sleep_gap",
+
+    # 가족력
+    '고혈압가족력점수', 'Diabetes F.History Sco', '허혈성심장질환가족력점수',
+    '뇌졸중가족력점수', 'Family History Score', '암가족력점수',
+
+    # 신체활동
+    'MET_work', 'MET_trans', 'Leisure Physical Activity', 'MET_total', 'sitting_time', 'BMR', 'TDEE', 'energy_balance_ratio',
+
+    # 영양섭취
+    'nutrient_imbalance',
+    'N_SFA', 'N_TDF', 'N_EN', 'fiber_adequacy_ratio', 'wt_tot', 'carb_fat_balance', 'sfa_adequacy_ratio', 'sfa_over_intake', 'N_UNFA'
+]
+
+
+
+
+# 실제 feature_cols에 존재하는 수치형 변수만 사용
+numeric_etc_cols = [col for col in numeric_etc_cols if col in feature_cols]
+
+# 2. 범주형 변수 = feature_cols - numeric_etc_cols
+cat_features = [col for col in feature_cols if col not in numeric_etc_cols]
+
+# 3. 범주형 변수 전처리 (CatBoost 요구사항)
+for col in cat_features:
+    if col in X_train.columns:
+        # NaN → 'missing'
+        X_train[col] = X_train[col].fillna('missing')
+        X_val[col]   = X_val[col].fillna('missing')
+        X_test[col]  = X_test[col].fillna('missing')
+
+        # 문자열 변환
+        X_train[col] = X_train[col].astype(str)
+        X_val[col]   = X_val[col].astype(str)
+        X_test[col]  = X_test[col].astype(str)
+
+print("범주형 변수 변환 완료!")
+
+
+
+# ============================================================
+# 10. CatBoost 모델 학습
+# ============================================================
+print("\n" + "="*60)
+print("CatBoost 모델 학습 시작")
+print("="*60)
+
+model = CatBoostRegressor(
+    iterations=2000,              # 5000 → 2000 (줄임)
+    learning_rate=0.1,            # 0.05 → 0.1 (높임)
+    depth=4,                      # 6 → 4 (줄임)
+    l2_leaf_reg=10,               # ⭐ L2 정규화 추가
+    loss_function='RMSE',
+    eval_metric='MAE',
+    cat_features=cat_features,
+    random_seed=42,
+    early_stopping_rounds=50,     # 100 → 50 (더 빨리 멈춤)
+    verbose=100,
+    task_type='CPU',
+    use_best_model=True,
+    bootstrap_type='Bernoulli',   # ⭐ 부트스트랩 추가
+    subsample=0.8                 # ⭐ 샘플링 비율 80%
+)
+
+
+# 학습 (가중치 적용, Validation set으로 평가)
+model.fit(
+    X_train,
+    y_train,
+    sample_weight=sample_weights,
+    eval_set=(X_val, y_val),
+    plot=False
+)
+
+
+print("\n학습 완료!")
+
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+import numpy as np
+
+# 1️⃣ 예측
+y_test_pred = model.predict(X_test)
+
+# 2️⃣ 지표 계산
+mae = mean_absolute_error(y_test, y_test_pred)
+rmse = np.sqrt(mean_squared_error(y_test, y_test_pred))
+r2 = r2_score(y_test, y_test_pred)
+mard = np.mean(np.abs((y_test.values - y_test_pred) / y_test.values)) * 100
+
+
+# 3️⃣ 결과 출력
+print("\n" + "="*60)
+print("Test Set 성능 평가")
+print("="*60)
+
+print(f"Test MAE      : {mae:.4f}")
+print(f"Test RMSE     : {rmse:.4f}")
+print(f"Test R² Score : {r2:.4f}")
+print(f"Test MARD     : {mard:.4f}%")
+
+# 전체 Test Set의 실제값 기준 ±8% 범위 정답률
+
+within_range = (((y_test_pred >= y_test.values * 0.92) & (y_test_pred<= y_test.values * 1.08))).sum()
+total_accuracy = (within_range / len(y_test.values)) * 100
+
+print(f"\n=== 전체 Test Set 실제값 기준 ±8% 정답률 ===")
+print(f"정답률: {total_accuracy:.2f}%")
+print(f"정답 개수: {within_range} / {len(y_test.values)}")
