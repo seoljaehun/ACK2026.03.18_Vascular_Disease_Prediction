@@ -1,0 +1,42 @@
+from sklearn.metrics import roc_curve, roc_auc_score
+import matplotlib.pyplot as plt
+import numpy as np
+
+# 1️⃣ 두 모델의 예측값 준비
+y_test_pred_1st = model_refined.predict(X_test_selected)  # 1차 모델 (진단 정보 제외)
+y_test_pred_2nd = model.predict(X_test)                   # 2차 모델 (진단 정보 포함)
+
+# 2️⃣ 설정 (기준점 및 스타일)
+thresholds = [5.7, 6.5]
+# 모델별 선 스타일 구분 (1차: 점선, 2차: 실선)
+model_configs = [
+    {'name': '1st Model', 'preds': y_test_pred_1st, 'ls': '--'},
+    {'name': '2nd Model', 'preds': y_test_pred_2nd, 'ls': '-'}
+]
+colors = {5.7: 'steelblue', 6.5: 'tomato'}
+
+# 3️⃣ 그래프 그리기
+plt.figure(figsize=(8, 7))
+
+for cutoff in thresholds:
+    # 실제값 이진화 (기준점 기준)
+    y_true_binary = (y_test >= cutoff).astype(int)
+
+    for config in model_configs:
+        fpr, tpr, _ = roc_curve(y_true_binary, config['preds'])
+        auc_score = roc_auc_score(y_true_binary, config['preds'])
+
+        label = f"{config['name']} : {cutoff}% (AUC = {auc_score:.3f})"
+        plt.plot(fpr, tpr, color=colors[cutoff], linestyle=config['ls'], label=label)
+
+        print(f"[{config['name']}] {cutoff}% 기준 ROC-AUC: {auc_score:.4f}")
+
+# 그래프 디테일 설정
+plt.plot([0, 1], [0, 1], linestyle=':', color='gray', label='Random Baseline')
+plt.xlabel('False Positive Rate (1 - Specificity)')
+plt.ylabel('True Positive Rate (Sensitivity)')
+plt.title('ROC Curve Comparison: 1st vs 2nd Model')
+plt.legend(loc='lower right', fontsize=9)
+plt.grid(alpha=0.3)
+plt.tight_layout()
+plt.show()
