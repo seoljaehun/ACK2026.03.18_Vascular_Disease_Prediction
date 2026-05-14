@@ -1,0 +1,91 @@
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
+import pandas as pd
+import numpy as np
+
+# ── 공통 함수 ─────────────────────────────────────────────
+def compute_gain_lift(y_true, y_pred, threshold=5.7):
+    df = pd.DataFrame({'actual': y_true, 'pred': y_pred})
+    df['is_positive'] = (df['actual'] >= threshold).astype(int)
+    df = df.sort_values('pred', ascending=False).reset_index(drop=True)
+    df['decile'] = pd.qcut(df.index, 10, labels=np.arange(10, 110, 10))
+
+    summary = df.groupby('decile', observed=True)['is_positive'].agg(['count','sum'])
+    summary.columns = ['total_count', 'positive_count']
+    summary['cum_positive'] = summary['positive_count'].cumsum()
+    summary['gain']         = summary['cum_positive'] / summary['positive_count'].sum() * 100
+    overall_rate            = summary['positive_count'].sum() / summary['total_count'].sum()
+    summary['precision']    = summary['positive_count'] / summary['total_count']
+    summary['lift']         = summary['precision'] / overall_rate
+
+    deciles = [0] + summary.index.astype(int).tolist()
+    gains   = [0] + summary['gain'].tolist()
+    lifts   = summary['lift'].tolist()
+    lift_x  = summary.index.astype(int).tolist()
+    return deciles, gains, lift_x, lifts, summary, overall_rate
+
+# ── 두 모델 계산 ──────────────────────────────────────────
+deciles_1, gains_1, lift_x_1, lifts_1, summary_1, rate_1 = compute_gain_lift(y_test, y_test_pred_refined)  # ← 1st
+deciles_2, gains_2, lift_x_2, lifts_2, summary_2, rate_2 = compute_gain_lift(y_test, y_test_pred)          # ← 2nd
+
+# ── 색상/스타일 설정 ──────────────────────────────────────
+C1 = '#8c8c8c'   # 1st: 회색 (진단 미포함)
+C2 = '#185FA5'   # 2nd: 파란색 (진단 포함)
+Cr = 'gray'
+
+plt.rcParams.update({'font.size': 13, 'font.family': 'sans-serif'})
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
+# ── (a) Cumulative Gain Chart ─────────────────────────────
+ax1.plot(deciles_1, gains_1, marker='o', color=C1, linewidth=2,
+         linestyle='--', label='1st Model (w/o Diagnosis)')
+ax1.plot(deciles_2, gains_2, marker='o', color=C2, linewidth=2.5,
+         linestyle='-',  label='2nd Model (w/ Diagnosis)')
+ax1.plot([0, 100], [0, 100], color=Cr, linestyle=':', linewidth=1.5,
+         alpha=0.6, label='Random')
+
+ax1.fill_between(deciles_1, deciles_1, gains_1, alpha=0.06, color=C1)
+ax1.fill_between(deciles_2, deciles_2, gains_2, alpha=0.08, color=C2)
+
+ax1.set_title('(a) Cumulative Gain Chart', fontweight='bold', pad=12)
+ax1.set_xlabel('Top Population (%)')
+ax1.set_ylabel('Gain (%)')
+ax1.set_xlim(0, 100); ax1.set_ylim(0, 105)
+ax1.xaxis.set_major_locator(mticker.MultipleLocator(10))
+ax1.grid(True, linestyle=':', alpha=0.5)
+ax1.legend(loc='lower right', fontsize=10)
+
+# ── (b) Lift Chart ────────────────────────────────────────
+ax2.plot(lift_x_1, lifts_1, marker='o', color=C1, linewidth=2,
+         linestyle='--', label='1st Model (w/o Diagnosis)')
+ax2.plot(lift_x_2, lifts_2, marker='o', color=C2, linewidth=2.5,
+         linestyle='-',  label='2nd Model (w/ Diagnosis)')
+ax2.axhline(y=1, color=Cr, linestyle=':', linewidth=1.5, alpha=0.6,
+            label='Random (1.0)')
+
+ax2.fill_between(lift_x_1, 1, lifts_1,
+                 where=[v >= 1 for v in lifts_1], alpha=0.06, color=C1)
+ax2.fill_between(lift_x_2, 1, lifts_2,
+                 where=[v >= 1 for v in lifts_2], alpha=0.08, color=C2)
+
+ax2.set_title('(b) Lift Chart', fontweight='bold', pad=12)
+ax2.set_xlabel('Top Population (%)')
+ax2.set_ylabel('Lift (x)')
+ax2.set_xlim(0, 100)
+ax2.xaxis.set_major_locator(mticker.MultipleLocator(10))
+ax2.grid(True, linestyle=':', alpha=0.5)
+ax2.legend(loc='upper right', fontsize=10)
+
+plt.tight_layout()
+plt.savefig("gain_lift_comparison.png", dpi=150, bbox_inches='tight')
+plt.show()
+
+# ── 수치 비교 출력 ─────────────────────────────────────────
+for label, summary, lifts, rate in [
+    ("1st Model (w/o Diagnosis)",  summary_1, lifts_1, rate_1),  # ← 변경
+    ("2nd Model (w/ Diagnosis)", summary_2, lifts_2, rate_2),  # ← 변경
+]:
+    print(f"\n[{label}]")
+    print(summary[['total_count', 'positive_count', 'gain', 'lift']].to_string())
+    print(f"Overall positive rate : {rate:.3f}")
+    print(f"Top 10% Lift : {lifts[0]:.3f}x  |  Top 20% Lift : {lifts[1]:.3f}x")
