@@ -1,0 +1,64 @@
+# @title
+# ============================================================
+# 21. 오차 큰 샘플 분석 (K-Means 클러스터링) - 테스트 데이터 기준
+# ============================================================
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
+import pandas as pd
+import numpy as np
+
+print("\n" + "="*60)
+print("상대오차 > ±8% 샘플 K-Means 클러스터링 분석 (Test 기준)")
+print("="*60)
+
+# --- 오차 계산 (test 기준) ---
+y_test_arr    = np.array(y_test)
+test_pred_arr = np.array(y_test_pred)  # ← test_final_pred → y_test_pred
+
+# 상대 오차 계산 (실제값 기준, 0인 샘플 제외)
+relative_error = (test_pred_arr - y_test_arr) / np.where(y_test_arr == 0, np.nan, y_test_arr)
+
+# 오차 ±8% 초과 필터링 (0인 샘플은 제외)
+# 첫 번째 코드와 동일한 방식으로 통일
+error_mask_np = ~((test_pred_arr >= y_test_arr * 0.92) & (test_pred_arr <= y_test_arr * 1.08))
+
+print(f"\n전체 test 샘플 수: {len(y_test_arr)}")
+print(f"상대오차 > ±8% 샘플 수: {error_mask_np.sum()} ({error_mask_np.mean()*100:.1f}%)")
+
+# --- 클러스터링 피처 구성 ---
+cluster_features = pd.DataFrame({
+    'abs_error':    np.abs(relative_error)[error_mask_np],
+    'actual':       y_test_arr[error_mask_np],
+    'predicted':    test_pred_arr[error_mask_np],
+    'error_signed': relative_error[error_mask_np],
+})
+
+# --- K-Means 클러스터링 ---
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(cluster_features)
+
+kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)
+cluster_features['cluster'] = kmeans.fit_predict(X_scaled)
+
+print("\n✅ K-Means 클러스터링 완료 (n_clusters=3)")
+
+# --- 클러스터별 오차 통계 ---
+print("\n📊 클러스터별 오차 통계:")
+cluster_summary = cluster_features.groupby('cluster').agg(
+    샘플수=('abs_error', 'count'),
+    평균상대오차=('abs_error', 'mean'),
+    최대상대오차=('abs_error', 'max'),
+    평균실제값=('actual', 'mean'),
+    평균예측값=('predicted', 'mean'),
+    평균부호오차=('error_signed', 'mean'),
+).round(4)
+print(cluster_summary)
+
+# --- 군집별 진단 비율 ---
+error_idx = np.where(error_mask_np)[0]
+cluster_features['DE1_dg'] = X_test['Diabetes Diagnosis'].iloc[error_idx].values
+
+print("\n📊 클러스터별 당뇨 진단 비율 (DE1_dg):")
+diag_summary = cluster_features.groupby('cluster')['DE1_dg'].value_counts().rename('개수').to_frame()
+diag_summary['비율(%)'] = cluster_features.groupby('cluster')['DE1_dg'].value_counts(normalize=True).mul(100).round(2)
+print(diag_summary)
