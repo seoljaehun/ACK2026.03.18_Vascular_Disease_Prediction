@@ -1,0 +1,48 @@
+from sklearn.metrics import classification_report
+import numpy as np
+import pandas as pd
+
+# 1️⃣ 설정
+cutoff = 5.7
+
+
+# 2️⃣ 데이터 준비
+y_true_bin = (y_test.values > cutoff).astype(int)
+
+# [1차 모델] 예측 및 이진화
+y_pred_1st = model_refined.predict(X_test_selected)
+y_pred_bin_1st = (y_pred_1st > cutoff).astype(int)
+
+# [2차 모델] 예측 및 이진화
+y_pred_2nd = model.predict(X_test)
+y_pred_bin_2nd = (y_pred_2nd > cutoff).astype(int)
+
+# 3️⃣ 리포트 생성 함수
+def get_report_df(y_true, y_pred):
+    report = classification_report(
+        y_true, y_pred,
+        target_names=target_names,
+        output_dict=True
+    )
+    df = pd.DataFrame(report).transpose().round(3)
+    return df
+
+# 4️⃣ 결과 계산
+report_1st = get_report_df(y_true_bin, y_pred_bin_1st)
+report_2nd = get_report_df(y_true_bin, y_pred_bin_2nd)
+
+# 5️⃣ 출력 (간격 및 구분선 추가)
+print(f"\n" + "="*60)
+print(f" [분류 성능 비교] Cutoff: {cutoff}%")
+print("="*60)
+
+print(f"\n▶ [1차 모델: 1st Refined]")
+print("-" * 50)
+print(report_1st)
+
+print(f"\n\n" + " " * 50) # 가독성을 위한 큰 공백
+
+print(f"▶ [2차 모델: 2nd Model]")
+print("-" * 50)
+print(report_2nd)
+print("\n" + "="*60)
