@@ -1,0 +1,153 @@
+ ============================================================
+# 1차 모델 저장 및 중요 변수 추출
+# ============================================================
+print("\n" + "="*60)
+print("1차 모델 저장 및 중요 변수 기반 재학습")
+print("="*60)
+
+# 1차 모델 저장
+model_1st.save_model('model_1st.cbm')
+print("✅ 1차 모델 저장 완료: model_1st.cbm")
+
+# Feature Importance 추출
+feature_importance = model_1st.get_feature_importance()
+feature_names = model_1st.feature_names_
+
+importance_df = pd.DataFrame({
+    'feature': feature_names,
+    'importance': feature_importance
+}).sort_values('importance', ascending=False)
+
+# Importance >= 0.1인 변수만 선택
+high_importance_features = importance_df[importance_df['importance'] >= 0.1]['feature'].tolist()
+
+print(f"\n총 변수 개수: {len(feature_names)}개")
+print(f"Importance >= 0.1 변수 개수: {len(high_importance_features)}개")
+
+print("\n선택된 변수 목록:")
+for i, feature in enumerate(high_importance_features, 1):
+    imp_value = importance_df[importance_df['feature'] == feature]['importance'].values[0]
+    print(f"{i:3d}. {feature:50s} : {imp_value:.4f}")
+
+# ============================================================
+# 선택된 변수로 데이터 준비
+# ============================================================
+print("\n" + "="*60)
+print("선택된 변수로 데이터 재구성")
+print("="*60)
+
+X_train_selected = X_train_1st[high_importance_features].copy()
+X_val_selected   = X_val_1st[high_importance_features].copy()
+X_test_selected  = X_test_1st[high_importance_features].copy()
+
+print(f"Train shape: {X_train_selected.shape}")
+print(f"Val shape:   {X_val_selected.shape}")
+print(f"Test shape:  {X_test_selected.shape}")
+
+# ============================================================
+# 범주형 변수 처리
+# ============================================================
+print("\n" + "="*60)
+print("범주형 변수 전처리")
+print("="*60)
+
+numeric_etc_cols_selected = [
+    'age',
+    "HE_BMI", "HE_wc", "N_WAT_C", "NF_WATER",
+    "N_FAT", "N_CHOL", "N_CHO", "N_TDF",
+    "N_SUGAR", "N_NA",
+    "HE_HbA1c", "HE_TG", "HE_HDL_st2",
+    "HE_glu", "HE_LDL_drct", "HE_chol", 'N_EN',
+    "BP16_1", "BP16_11", "BP16_12", "BP16_13", "BP16_14",
+    "BP16_2", "BP16_21", "BP16_22", "BP16_23", "BP16_24", "BP8", "sleep_gap",
+    '고혈압가족력점수', '고지혈증가족력점수', '허혈성심장질환가족력점수',
+    '뇌졸중가족력점수', '당뇨병가족력점수', '암가족력점수',
+    'MET_work', 'MET_trans', 'MET_leisure', 'MET_total', 'sitting_time', 'BMR', 'TDEE', 'energy_balance_ratio',
+    'carb_ratio', 'fat_ratio', 'prot_ratio', 'nutrient_imbalance', 'carb_fat_balance',
+    'N_SFA', 'sfa_adequacy_ratio', 'sfa_over_intake', 'N_TDF', 'N_EN', 'fiber_adequacy_ratio', 'wt_tot'
+]
+
+numeric_cols_in_selected  = [col for col in numeric_etc_cols_selected if col in high_importance_features]
+cat_features_in_selected  = [col for col in high_importance_features if col not in numeric_cols_in_selected]
+
+print(f"선택된 변수 중 수치형: {len(numeric_cols_in_selected)}개")
+print(f"선택된 변수 중 범주형: {len(cat_features_in_selected)}개")
+
+for col in cat_features_in_selected:
+    X_train_selected[col] = X_train_selected[col].fillna('missing').astype(str)
+    X_val_selected[col]   = X_val_selected[col].fillna('missing').astype(str)
+    X_test_selected[col]  = X_test_selected[col].fillna('missing').astype(str)
+
+print("✅ 범주형 변수 변환 완료!")
+
+if len(cat_features_in_selected) > 0:
+    print("\n범주형 변수 목록:")
+    for i, col in enumerate(cat_features_in_selected, 1):
+        print(f"  {i}. {col}")
+
+# ============================================================
+# 재학습 (2차 모델)
+# ============================================================
+print("\n" + "="*60)
+print("재학습 시작 (중요 변수만 사용)")
+print("="*60)
+
+model_refined = CatBoostRegressor(
+    iterations=3000,
+    learning_rate=0.03,
+    depth=8,
+    loss_function='MAE',
+    eval_metric='MAE',
+    cat_features=cat_features_in_selected,
+    task_type='CPU',
+    random_seed=42,
+    verbose=500
+)
+
+model_refined.fit(
+    X_train_selected, y_train_1st,
+    eval_set=(X_val_selected, y_val_1st),
+    early_stopping_rounds=100,
+    verbose=500
+)
+
+print("\n✅ 재학습 완료")
+
+# ============================================================
+# 성능 평가
+# ============================================================
+print("\n" + "="*60)
+print("성능 비교")
+print("="*60)
+
+# 1차 모델 예측
+y_test_pred_1st_orig = model_1st.predict(X_test_1st)
+mae_original  = mean_absolute_error(y_test, y_test_pred_1st_orig)
+rmse_original = np.sqrt(mean_squared_error(y_test, y_test_pred_1st_orig))
+r2_original   = r2_score(y_test, y_test_pred_1st_orig)
+
+# 재학습 모델 예측
+y_test_pred_refined = model_refined.predict(X_test_selected)
+mae_refined  = mean_absolute_error(y_test, y_test_pred_refined)
+rmse_refined = np.sqrt(mean_squared_error(y_test, y_test_pred_refined))
+r2_refined   = r2_score(y_test, y_test_pred_refined)
+
+print(f"\n1차 모델 (전체 변수: {len(feature_names)}개)")
+print(f"  MAE:  {mae_original:.4f}")
+print(f"  RMSE: {rmse_original:.4f}")
+print(f"  R²:   {r2_original:.4f}")
+
+print(f"\n재학습 모델 (선택 변수: {len(high_importance_features)}개)")
+print(f"  MAE:  {mae_refined:.4f} ({mae_refined - mae_original:+.4f})")
+print(f"  RMSE: {rmse_refined:.4f} ({rmse_refined - rmse_original:+.4f})")
+print(f"  R²:   {r2_refined:.4f} ({r2_refined - r2_original:+.4f})")
+
+if mae_refined < mae_original:
+    print(f"\n✅ 성능 개선! MAE가 {mae_original - mae_refined:.4f} 감소")
+else:
+    print(f"\n⚠️  성능 저하. MAE가 {mae_refined - mae_original:.4f} 증가")
+
+
+print("\n" + "="*60)
+print("재학습 작업 완료!")
+print("="*60)
