@@ -1,12 +1,23 @@
 # ACK2026.03.18_Vascular_Disease_Prediction
 
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/5418762f-45fc-4e98-a6ee-2f95e4c32621" width="49%" />
+  <img src="https://github.com/user-attachments/assets/700806a2-9abe-48aa-b8cd-a51cc1e9e89e" width="49%" />
+</p>
 
-<img width="2400" height="1350" alt="image" src="https://github.com/user-attachments/assets/72045735-c830-4171-8575-a14ca2e50989" />
-<img width="2400" height="1350" alt="image" src="https://github.com/user-attachments/assets/6fd66db0-462d-4cb7-9dd3-e0f33d1ce500" />
-<img width="2400" height="1350" alt="image" src="https://github.com/user-attachments/assets/16a5766a-a987-4748-b7ce-3fa8e9cacde8" />
-<img width="2400" height="1350" alt="image" src="https://github.com/user-attachments/assets/d4c5438e-6eb4-43e8-a0aa-486bb305f37f" />
-<img width="2400" height="1350" alt="image" src="https://github.com/user-attachments/assets/dfd0b602-e340-4f86-a64a-41152bc7f24f" />
-<img width="2400" height="1350" alt="image" src="https://github.com/user-attachments/assets/f402fce1-6508-47a5-a58b-08b9c78bebbb" />
-<img width="2400" height="1350" alt="image" src="https://github.com/user-attachments/assets/6e7cc153-62c5-4d83-9d67-391be11e77bb" />
-<img width="2400" height="1350" alt="image" src="https://github.com/user-attachments/assets/22f10de2-e5bd-4b0e-8d76-67acff0c214a" />
-<img width="2400" height="1350" alt="image" src="https://github.com/user-attachments/assets/c66bb708-209e-41a6-9786-80a4d4f8e65d" />
+<img width="2400" height="1350" alt="image" src="https://github.com/user-attachments/assets/f3be33fc-2e9b-402f-a631-7c44a51049fe" />
+<img width="2400" height="1350" alt="image" src="https://github.com/user-attachments/assets/53f95a29-e7c0-4ed4-a53c-913f163fc0ad" />
+<img width="2400" height="1350" alt="image" src="https://github.com/user-attachments/assets/16b40558-09ff-407a-b4ce-44522011cfba" />
+<img width="2400" height="1350" alt="image" src="https://github.com/user-attachments/assets/fd1f330b-cb73-423c-b551-df4475878b31" />
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/acd5783f-074f-4348-a465-2fb2b5132d98" width="49%" />
+  <img src="https://github.com/user-attachments/assets/fe2567df-70d5-4ce8-882f-4ce3d679ceab" width="49%" />
+</p>
+<img width="2400" height="1350" alt="image" src="https://github.com/user-attachments/assets/a851a682-53a2-4d8c-b44a-d09f4c3ac53a" />
+
+<img width="2400" height="1350" alt="image" src="https://github.com/user-attachments/assets/f194741d-6157-4c9c-9c20-1d2101dd129e" />
+<img width="2400" height="1350" alt="image" src="https://github.com/user-attachments/assets/2f52c1da-a83f-457e-847e-623280581744" />
+<img width="2400" height="1350" alt="image" src="https://github.com/user-attachments/assets/f61334b7-e9de-4775-8e86-0f60f08a0645" />
+<img width="2400" height="1350" alt="image" src="https://github.com/user-attachments/assets/4a517c1e-70ed-4e5d-881b-82b4bd739660" />
+
+
